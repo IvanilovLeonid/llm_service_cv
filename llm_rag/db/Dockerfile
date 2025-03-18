@@ -1,0 +1,7 @@
+FROM postgres:16
+
+ENV POSTGRES_DB=resumes_db
+ENV POSTGRES_USER=user
+ENV POSTGRES_PASSWORD=password
+
+EXPOSE 5432
