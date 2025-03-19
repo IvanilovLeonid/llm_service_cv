@@ -1,10 +1,10 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 class ResumeBase(BaseModel):
     first_name: str
     last_name: str
     phone: str
-    email: EmailStr
+    email: str
     direction: str
     skills: str
     education: str
