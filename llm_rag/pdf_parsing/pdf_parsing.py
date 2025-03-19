@@ -26,21 +26,16 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         return ""
 
 
-def parse_pdf_with_groq(pdf_text: str) -> Dict:
+def parse_pdf_with_groq(pdf_text: str, pdf_path: str) -> Dict:
     prompt = (
         "You are an expert in parsing resumes. Extract the following fields and write in Russian from the text: "
-        "first_name, last_name, phone, email, direction, skills, education, experience, about_me. "
+        "full_name, direction, skills, experience. "
         "Return the result as a valid JSON object with the following structure:\n"
         "{\n"
-        "    \"first_name\": \"string\",\n"
-        "    \"last_name\": \"string\",\n"
-        "    \"phone\": \"string\",\n"
-        "    \"email\": \"string\",\n"
+        "    \"full_name\": \"string\",\n"
         "    \"direction\": \"string\",\n"
         "    \"skills\": \"string\",\n"
-        "    \"education\": \"string\",\n"
         "    \"experience\": \"string\",\n"
-        "    \"about_me\": \"string\"\n"
         "}\n"
         "Do not include any reasoning or additional text, only the JSON object."
     )
@@ -64,6 +59,10 @@ def parse_pdf_with_groq(pdf_text: str) -> Dict:
         print(corrected_response)
         # Попробуем преобразовать JSON
         parsed_json = json.loads(corrected_response)
+
+        # Добавляем pdf_filename
+        parsed_json["pdf_filename"] = pdf_path
+
         return parsed_json
 
     except json.JSONDecodeError as e:
@@ -118,7 +117,7 @@ def process_pdf_folder(folder_path: str):
             if not pdf_text:
                 continue
 
-            resume_data = parse_pdf_with_groq(pdf_text)
+            resume_data = parse_pdf_with_groq(pdf_text, pdf_path)
             if not resume_data:
                 continue
 

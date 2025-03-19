@@ -1,15 +1,11 @@
 from pydantic import BaseModel
 
 class ResumeBase(BaseModel):
-    first_name: str
-    last_name: str
-    phone: str
-    email: str
+    full_name: str
     direction: str
     skills: str
-    education: str
     experience: str
-    about_me: str
+    pdf_filename: str
 
 class ResumeCreate(ResumeBase):
     pass
