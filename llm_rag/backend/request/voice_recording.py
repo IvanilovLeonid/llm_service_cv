@@ -6,7 +6,7 @@ import os
 import time
 import torch
 import numpy as np
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, pipeline
 import threading
 import torchaudio
 
@@ -22,9 +22,6 @@ MODEL_NAME = "jonatasgrosman/wav2vec2-large-xlsr-53-russian"
 processor = Wav2Vec2Processor.from_pretrained(MODEL_NAME)
 model = Wav2Vec2ForCTC.from_pretrained(MODEL_NAME)
 model.eval()
-
-# # Загрузка модели для исправления текста (RuBERT)
-# text_corrector = pipeline("text2text-generation", model="DeepPavlov/rubert-base-cased")
 
 # Глобальная переменная для управления записью
 is_recording = True
@@ -100,16 +97,7 @@ def transcribe_audio(file_path):
     finally:
         os.remove(file_path)
         
-# def correct_text(text):
-#     """Исправляет текст с помощью модели RuBERT"""
-#     try:
-#         # Используем модель для исправления текста
-#         corrected_text = text_corrector(text)[0]['generated_text']
-#         return corrected_text
-#     except Exception as e:
-#         print(f"Ошибка исправления текста: {e}")
-#         return text  # Возвращаем исходный текст в случае ошибки
-
+    
 if __name__ == "__main__":
     print("Подготовка к записи...")
     time.sleep(1)
@@ -124,22 +112,3 @@ if __name__ == "__main__":
     else:
         print("Распознавание не удалось")
 
-
-# if __name__ == "__main__":
-#     print("Подготовка к записи...")
-#     time.sleep(1)
-    
-#     audio_file = record_audio()
-#     print("Распознавание...")
-    
-#     text = transcribe_audio(audio_file)
-    
-#     if text:
-#         print(f"Распознанный текст: {text}")
-        
-#         # Исправление текста
-#         corrected_text = correct_text(text)
-#         print(f"Исправленный текст: {corrected_text}")
-#     else:
-#         print("Распознавание не удалось")
-        
