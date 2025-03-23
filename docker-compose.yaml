@@ -18,7 +18,7 @@ services:
 
   backend:
     build:
-      context: ./llm_rag/backend
+      context: llm_rag/api
       dockerfile: Dockerfile
     container_name: backend_app
     restart: always

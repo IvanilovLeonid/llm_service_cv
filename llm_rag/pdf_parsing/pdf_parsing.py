@@ -4,16 +4,17 @@ import requests
 from groq import Groq
 from typing import Dict
 import json
+from process_rag_cv import process_resume_with_matching
 
 FOLDER_PATH = "/Users/lenaivanilov/Documents/project_llm/cv_files"
-GROQ_API_KEY = "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"
+# GROQ_API_KEY = "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"
+GROQ_API_KEY = "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"
 FASTAPI_URL = "http://localhost:8000/resumes/"
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Извлекает текст из PDF-файла."""
     try:
         with open(pdf_path, "rb") as file:
             reader = PyPDF2.PdfReader(file)
@@ -25,15 +26,15 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         print(f"Ошибка при чтении {pdf_path}: {e}")
         return ""
 
+
 # TODO сделать через RAG тоже самое и с помощью него находить сходства
-def parse_pdf_with_groq(pdf_text: str, pdf_path: str, directions_set: set) -> Dict:
-    directions_list = sorted(directions_set)
-    directions_string = ", ".join(directions_list)
+def parse_pdf_with_groq(pdf_text: str, pdf_path: str) -> Dict:
 
     prompt = (
-        "Ты эксперт по парсингу резюме. Извлеки из текста следующие поля и запиши их на русском языке: "
+        "Ты эксперт по парсингу резюме. Извлеки из текста следующие поля и запиши их строго как : "
         "full_name, direction, skills, experience.\n"
-        f"Поле direction должно строго соответствовать одному из следующих значений: {directions_string}.\n"
+        f"В полях вводи строго то, что в самом тексте подходит под данный пункт. \n"
+        "Обязательно следи чтобы ничего лишнего не попало.\n"
         "Верни результат в виде корректного JSON с такой структурой:\n"
         "{\n"
         "    \"full_name\": \"string\",\n"
@@ -64,6 +65,13 @@ def parse_pdf_with_groq(pdf_text: str, pdf_path: str, directions_set: set) -> Di
         # Попробуем преобразовать JSON
         parsed_json = json.loads(corrected_response)
 
+        print("изначальный вид:")
+        print(parsed_json)
+
+        parsed_json = process_resume_with_matching(parsed_json, "http://localhost:8000/vacancies/")
+        print("как в базе данных")
+        print(parsed_json)
+
         # Добавляем pdf_filename
         parsed_json["pdf_filename"] = pdf_path
 
@@ -77,28 +85,6 @@ def parse_pdf_with_groq(pdf_text: str, pdf_path: str, directions_set: set) -> Di
 
     # Возвращаем пустой словарь в случае ошибки
     return {}
-
-
-def get_unique_directions_from_vacancies(api_url: str) -> set:
-    """
-    Получает уникальные направления (direction) из базы данных вакансий.
-
-    :param api_url: URL для GET-запроса к вакансиям, например http://localhost:8000/vacancies/
-    :return: Множество уникальных направлений
-    """
-    try:
-        response = requests.get(api_url)
-        if response.status_code == 200:
-            vacancies = response.json()
-            directions = [vacancy.get("direction") for vacancy in vacancies if vacancy.get("direction")]
-            return set(directions)
-        else:
-            print(f"❌ Ошибка при получении данных: {response.status_code} - {response.text}")
-            return set()
-    except Exception as e:
-        print(f"❌ Ошибка при запросе направлений вакансий: {e}")
-        return set()
-
 
 
 def add_to_database(parsed_data: Dict):
@@ -115,7 +101,7 @@ def add_to_database(parsed_data: Dict):
         print(f"Ошибка при отправке данных: {e}")
 
 
-def process_pdf_folder(folder_path: str, direction_set: set):
+def process_pdf_folder(folder_path: str):
     """Обрабатывает все PDF-файлы в папке и добавляет их в базу данных."""
     if not os.path.exists(folder_path):
         print(f"Папка {folder_path} не существует")
@@ -130,13 +116,11 @@ def process_pdf_folder(folder_path: str, direction_set: set):
             if not pdf_text:
                 continue
 
-            resume_data = parse_pdf_with_groq(pdf_text, pdf_path, direction_set)
+            resume_data = parse_pdf_with_groq(pdf_text, pdf_path)
             if not resume_data:
                 continue
-
             add_to_database(resume_data)
 
 
 if __name__ == "__main__":
-    directions = get_unique_directions_from_vacancies("http://localhost:8000/vacancies/")
-    process_pdf_folder(FOLDER_PATH, directions)
+    process_pdf_folder(FOLDER_PATH)

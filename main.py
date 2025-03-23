@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from llm_rag.backend.http import router
+from llm_rag.api.http import router
 from llm_rag.db.database.database import init_db, Base, engine
 
 # Основное приложение FastAPI
