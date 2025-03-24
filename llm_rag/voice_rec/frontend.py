@@ -1,11 +1,24 @@
 import streamlit as st
-import pandas as pd
-import uuid
+import requests  # Импортируем библиотеку для выполнения HTTP-запросов
 from voice_recorder import start_recording, stop_recording, process_inputVoise
 from text_editor import process_text, get_oauth_token
 
 # Константы для API GigaChat
-GIGACHAT_API_KEY = 'MDVhZjBkMWEtYjJjZS00ZmJjLTkzZjUtMjVlOGUwODdmNmY4OmYwYTI0NDNlLWU0NWItNGU1MS04NTg5LWYzNGY2ZDY1ZTBhMQ=='
+GIGACHAT_API_KEY = 'NWMwOWI4ZGItYTY0OS00NjIwLWFjYzgtMjk2ZWY3ZTU0ZTcyOmY4YTNjNGRlLWE1MTEtNGJjMi05NTE5LTJmY2E1MWNhN2FlZQ=='
+
+
+def fetch_vacancies():
+    """Выполняет GET-запрос к API для получения списка вакансий."""
+    try:
+        response = requests.get("http://localhost:8000/vacancies/")
+        if response.status_code == 200:
+            return response.json()  # Возвращаем JSON с вакансиями
+        else:
+            st.error(f"Ошибка при загрузке вакансий: {response.status_code}")
+            return []
+    except Exception as e:
+        st.error(f"Ошибка при выполнении запроса: {e}")
+        return []
 
 
 def main():
@@ -131,10 +144,16 @@ def main():
         "show_create_form": False,
         "selected_vacancy": None,
         "vacancies": [],
-        "recording": False
+        "recording": False,
+        "vacancies_loaded": False  # Флаг для проверки загрузки вакансий
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
+
+    # Загрузка вакансий при первом запуске
+    if not st.session_state["vacancies_loaded"]:
+        st.session_state["vacancies"] = fetch_vacancies()
+        st.session_state["vacancies_loaded"] = True
 
     with st.sidebar:
         # Большой заголовок "Инструменты эйчар"
@@ -191,9 +210,14 @@ def main():
                         unsafe_allow_html=True)
         else:
             for vacancy in st.session_state["vacancies"]:
-                if st.button(vacancy["title"], key=f"vacancy_{vacancy['id']}"):
-                    st.session_state["selected_vacancy"] = vacancy
-
+                # Проверяем, что ключи "direction", "skills" и "tasks" существуют
+                if "direction" in vacancy and "skills" in vacancy and "tasks" in vacancy:
+                    # Формируем текст для кнопки
+                    button_text = f"{vacancy['direction']}\nНавыки: {vacancy['skills']}\nЗадачи: {vacancy['tasks']}"
+                    if st.button(button_text, key=f"vacancy_{vacancy['id']}"):
+                        st.session_state["selected_vacancy"] = vacancy
+                else:
+                    st.error(f"Ошибка: Вакансия с ID {vacancy.get('id', 'неизвестно')} содержит неполные данные.")
     # Логика отображения правой части экрана
     if st.session_state["show_create_form"]:
         create_vacancy()
@@ -220,69 +244,112 @@ def main():
 def create_vacancy():
     st.subheader("Создание новой вакансии")
 
-    # Поля для ввода данных
-    title = st.text_input("Название вакансии*", placeholder="Введите название вакансии")
+    # Поля для ввода данных (без поля "Опыт")
+    direction = st.text_input("Название вакансии*", placeholder="Введите название вакансии")
     skills = st.text_area("Требуемые навыки*", placeholder="Опишите необходимые навыки")
-    experience = st.text_area("Опыт*", placeholder="Укажите требуемый опыт")
-    description = st.text_area("Описание задач*", placeholder="Опишите задачи вакансии")
+    tasks = st.text_area("Описание задач*", placeholder="Опишите задачи вакансии")
 
     # Кнопка "Создать вакансию"
     if st.button("Создать вакансию", key="create_vac"):
         # Проверка, что все поля заполнены
-        if not title.strip():
+        if not direction.strip():
             st.warning("Поле 'Название вакансии' обязательно для заполнения!")
         elif not skills.strip():
             st.warning("Поле 'Требуемые навыки' обязательно для заполнения!")
-        elif not experience.strip():
-            st.warning("Поле 'Опыт' обязательно для заполнения!")
-        elif not description.strip():
+        elif not tasks.strip():
             st.warning("Поле 'Описание задач' обязательно для заполнения!")
         else:
-            # Если все поля заполнены, создаём новую вакансию
+            # Формируем JSON для POST-запроса
             new_vacancy = {
-                "id": str(uuid.uuid4()),
-                "title": title,
+                "direction": direction,
                 "skills": skills,
-                "experience": experience,
-                "description": description
+                "tasks": tasks
             }
-            st.session_state["vacancies"].append(new_vacancy)
-            st.session_state["show_create_form"] = False
-            st.session_state["selected_vacancy"] = new_vacancy
-            st.rerun()
+
+            # Отправляем POST-запрос на сервер
+            try:
+                response = requests.post(
+                    "http://localhost:8000/vacancies/",
+                    json=new_vacancy,
+                    headers={"Content-Type": "application/json"}
+                )
+
+                # Проверяем успешность запроса
+                if response.status_code == 200:  # 201 - Created
+                    st.success("Вакансия успешно создана!")
+                    # Обновляем список вакансий
+                    st.session_state["vacancies"] = fetch_vacancies()
+                    st.session_state["show_create_form"] = False
+                    st.rerun()
+                else:
+                    st.error(f"Ошибка при создании вакансии: {response.status_code}")
+            except Exception as e:
+                st.error(f"Ошибка при отправке запроса: {e}")
 
 
 def show_vacancy_details(vacancy):
-    st.subheader(f"Вакансия: {vacancy['title']}")
+    st.subheader(f"Вакансия: {vacancy['direction']}")
     st.write(f"**Навыки:** {vacancy['skills']}")
-    st.write(f"**Опыт:** {vacancy['experience']}")
-    st.write(f"**Описание задач:** {vacancy['description']}")
+    st.write(f"**Задачи:** {vacancy['tasks']}")
 
+    # Выполняем поиск резюме по вакансии
     st.subheader("Подходящие кандидаты")
-    candidates = [
-        {"name": "Иван Иванов", "skills": "Python, Django", "experience": "3 года", "relevance": "85%",
-         "resume": "ivan_ivanov.pdf"},
-        {"name": "Анна Смирнова", "skills": "ML, Pandas", "experience": "2 года", "relevance": "78%",
-         "resume": "anna_smirnova.pdf"}
-    ]
+    resumes = search_resumes(vacancy)
 
-    for candidate in candidates:
-        with st.expander(f"{candidate['name']} - {candidate['relevance']}"):
-            st.write(f"**Навыки:** {candidate['skills']}")
-            st.write(f"**Опыт работы:** {candidate['experience']}")
-            st.download_button(label="📄 Скачать резюме", data=b"", file_name=candidate["resume"],
-                               mime="application/pdf")
+    if not resumes:
+        st.markdown("<p class='empty-list'>Подходящих резюме не найдено.</p>", unsafe_allow_html=True)
+    else:
+        # Отображаем список резюме
+        for resume_data in resumes:
+            resume = resume_data["resume"]
+            similarity = resume_data["similarity"]
 
-    selected_candidate = st.radio("Выберите кандидата:", [c["name"] for c in candidates], index=None,
-                                  key="selected_candidate")
+            with st.expander(f"{resume['full_name']} - Совпадение: {similarity * 100:.2f}%"):
+                st.write(f"**Навыки:** {resume['skills']}")
+                st.write(f"**Опыт работы:** {resume['experience']}")
 
-    if st.button("Закрыть вакансию", key="close_vacancy",
-                 disabled=st.session_state.get("selected_candidate") is None):
-        st.session_state["vacancies"] = [v for v in st.session_state["vacancies"] if v["id"] != vacancy["id"]]
-        st.session_state["candidates"] = [c for c in candidates if c["name"] != st.session_state["selected_candidate"]]
-        del st.session_state["selected_vacancy"]
-        del st.session_state["selected_candidate"]
+
+                with open(resume["pdf_filename"], "rb") as pdf_file:
+                    pdf_bytes = pdf_file.read()
+                    st.download_button(
+                        label="📄 Скачать резюме",
+                        data=pdf_bytes,
+                        file_name=resume["pdf_filename"].split("/")[-1],
+                        mime="application/pdf"
+                    )
+
+    # Кнопка для закрытия вакансии
+    if st.button("← Назад", key="back_to_main"):
+        st.session_state["selected_vacancy"] = None
         st.rerun()
+
+
+def search_resumes(vacancy):
+    """Выполняет POST-запрос для поиска резюме по вакансии."""
+    try:
+        # Формируем JSON для запроса
+        search_data = {
+            "direction": vacancy["direction"],
+            "skills": vacancy["skills"],
+            "tasks": vacancy["tasks"]
+        }
+
+        # Отправляем POST-запрос
+        response = requests.post(
+            "http://localhost:8000/search_resumes/",
+            json=search_data,
+            headers={"Content-Type": "application/json"}
+        )
+
+        # Проверяем успешность запроса
+        if response.status_code == 200:
+            return response.json()  # Возвращаем список резюме
+        else:
+            st.error(f"Ошибка при поиске резюме: {response.status_code}")
+            return []
+    except Exception as e:
+        st.error(f"Ошибка при выполнении запроса: {e}")
+        return []
 
 
 def handle_enter():
@@ -298,6 +365,7 @@ def process_input():
         st.session_state["selected_vacancy"] = None  # Очищаем выбранную вакансию
         st.session_state["show_create_form"] = False  # Закрываем форму создания вакансии
         st.session_state["user_input"] = ""  # Очистка поля ввода
+
 
 def process_input():
     """Обработка текстового ввода."""
@@ -329,6 +397,7 @@ def process_input():
         st.session_state["selected_vacancy"] = None  # Очищаем выбранную вакансию
         st.session_state["show_create_form"] = False  # Закрываем форму создания вакансии
         st.session_state["user_input"] = ""  # Очистка поля ввода
+
 
 def show_chat():
     for message in st.session_state["chat_history"]:

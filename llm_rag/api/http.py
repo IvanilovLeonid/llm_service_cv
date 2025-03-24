@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from llm_rag.db.database.database import SessionLocal, engine, Base
-from llm_rag.db.schemas.schemas import Resume as ResumeSchema, ResumeCreate, ResumeUpdate, Vacancy as VacancySchema, VacancyCreate
+from llm_rag.search.search import simple_resume_search
+from llm_rag.db.schemas.schemas import Resume as ResumeSchema, ResumeCreate, ResumeUpdate, Vacancy as VacancySchema, VacancyCreate, VacancyBase
 from llm_rag.db.repository.repository import create_resume, get_resume, get_resumes, update_resume, delete_resume, create_vacancy, get_vacancy, get_vacancies
+from pydantic import BaseModel
+from typing import List
+import os
 
 router = APIRouter()
 
@@ -13,6 +18,38 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+class ResumeWithScore(BaseModel):
+    resume: ResumeSchema
+    similarity: float
+
+
+@router.get("/download")
+def download_file(file_path: str = Query(...)):
+    if os.path.exists(file_path):
+        return FileResponse(path=file_path, filename=os.path.basename(file_path), media_type='application/pdf')
+    return {"error": "File not found"}
+
+
+@router.post("/search_resumes/", response_model=List[ResumeWithScore])
+def search_resumes(vacancy: VacancyBase, top_n: int = Query(20, ge=1, le=50)):
+    """
+    Ищет наиболее подходящие резюме под вакансию.
+    :param vacancy: JSON с direction и skills
+    :param top_n: Сколько лучших резюме вернуть (по умолчанию 5, максимум 50)
+    """
+    try:
+        results = simple_resume_search(vacancy.dict())
+        sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
+        top_results = sorted_results[:top_n]
+
+        response = [
+            ResumeWithScore(resume=r, similarity=round(score, 4)) for r, score in top_results
+        ]
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
 
 @router.post("/resumes/", response_model=ResumeSchema)
