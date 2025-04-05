@@ -2,9 +2,14 @@ import streamlit as st
 import requests  # Импортируем библиотеку для выполнения HTTP-запросов
 from voice_recorder import start_recording, stop_recording, process_inputVoise
 from text_editor import process_text, get_oauth_token
+import pyttsx3
+import threading
+from typing import Dict, List
+import time
+import subprocess
 
 # Константы для API GigaChat
-GIGACHAT_API_KEY = 'NWMwOWI4ZGItYTY0OS00NjIwLWFjYzgtMjk2ZWY3ZTU0ZTcyOmY4YTNjNGRlLWE1MTEtNGJjMi05NTE5LTJmY2E1MWNhN2FlZQ=='
+GIGACHAT_API_KEY = 'MWI4YmEzOTAtYTQwMS00OGM5LTk3ODYtNDFlNjg1MTg1NTIzOmJkNDg3OTQ2LTQ3NTctNGYwNS1iMjg5LTVhNzIyYTVjOTc0NQ=='
 
 
 def fetch_vacancies():
@@ -23,6 +28,7 @@ def fetch_vacancies():
 
 def main():
     st.set_page_config(page_title="HR-Инструмент", layout="wide")
+
 
     # Кастомные стили для нежного дизайна
     st.markdown(
@@ -140,12 +146,14 @@ def main():
     for key, default in {
         "chat_history": [],
         "user_input": "",
+        "temp_input": "",  # Новая временная переменная
         "chat_active": False,
         "show_create_form": False,
         "selected_vacancy": None,
         "vacancies": [],
         "recording": False,
-        "vacancies_loaded": False  # Флаг для проверки загрузки вакансий
+        "vacancies_loaded": False,
+        "audio_file": None
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
@@ -154,19 +162,28 @@ def main():
     if not st.session_state["vacancies_loaded"]:
         st.session_state["vacancies"] = fetch_vacancies()
         st.session_state["vacancies_loaded"] = True
+    if 'input_processed' not in st.session_state:
+        st.session_state.input_processed = False
 
     with st.sidebar:
-        # Большой заголовок "Инструменты эйчар"
         st.markdown("<h1 style='text-align: center; color: #FFFFFF;'>HR-инструмент</h1>", unsafe_allow_html=True)
         st.markdown("<div class='gradient-hr'></div>", unsafe_allow_html=True)
 
         st.markdown("<h2 style='color: #FFFFFF;'>Ваш ИИ-помощник</h2>", unsafe_allow_html=True)
+
         # Текстовое поле и микрофон
         text_input_col, mic_col = st.columns([0.9, 0.1])
         with text_input_col:
             if not st.session_state.get("recording", False):
-                user_input = st.text_input("", placeholder="Спросите что-нибудь...", label_visibility="collapsed",
-                                           key="user_input", on_change=handle_enter)
+                user_input = st.text_input(
+                    "",
+                    placeholder="Спросите что-нибудь...",
+                    label_visibility="collapsed",
+                    key="user_input",
+                    value=st.session_state.get("temp_input", ""),
+                    on_change=handle_enter
+                )
+                st.session_state.temp_input = ""  # Сброс после рендеринга
             else:
                 st.markdown("<p style='color: #FFFFFF; font-weight: bold;'>🔴 Слушаю Вас! Говорите...</p>",
                             unsafe_allow_html=True)
@@ -178,11 +195,10 @@ def main():
                     st.session_state["recording"] = True
                     st.rerun()
             else:
-                if st.button("   ⏹   ", key="stop_mic_button"):
-                    stop_recording()
+                if st.button("⏹", key="stop_mic_button"):
                     st.session_state["recording"] = False
                     st.rerun()
-
+        # Кнопка отправки
         if st.session_state.get("recording", False):
             if st.button("Закончить и отправить", key="send_audio_button"):
                 stop_recording()
@@ -191,12 +207,10 @@ def main():
                 st.rerun()
         else:
             if st.button("Отправить", key="send_button"):
-                process_input()
+                process_text_input()
 
-        # Пустая строка
+        # Блок вакансий (оставить без изменений)
         st.write("")
-
-        # Заголовок "Список вакансий" и кнопка "+"
         col1, col2 = st.columns([0.9, 0.1])
         with col1:
             st.markdown("<h2 style='color: #FFFFFF;'>Список вакансий</h2>", unsafe_allow_html=True)
@@ -204,21 +218,16 @@ def main():
             if st.button("➕", key="add_vacancy_sidebar"):
                 st.session_state["show_create_form"] = True
 
-        # Если список вакансий пуст
         if not st.session_state["vacancies"]:
-            st.markdown("<p class='empty-list'>Тут пока пусто... Чтобы добавить вакансию, нажмите на плюсик.</p>",
-                        unsafe_allow_html=True)
+            st.markdown("<p class='empty-list'>Тут пока пусто...</p>", unsafe_allow_html=True)
         else:
             for vacancy in st.session_state["vacancies"]:
-                # Проверяем, что ключи "direction", "skills" и "tasks" существуют
-                if "direction" in vacancy and "skills" in vacancy and "tasks" in vacancy:
-                    # Формируем текст для кнопки
-                    button_text = f"{vacancy['direction']}\nНавыки: {vacancy['skills']}\nЗадачи: {vacancy['tasks']}"
-                    if st.button(button_text, key=f"vacancy_{vacancy['id']}"):
+                if all(k in vacancy for k in ["direction", "skills", "tasks"]):
+                    button_text = f"## {vacancy['direction']}\n\nНавыки: {vacancy['skills']}"
+                    if st.button(button_text, key=f"vacancy_{vacancy['id']}", use_container_width=True):
                         st.session_state["selected_vacancy"] = vacancy
-                else:
-                    st.error(f"Ошибка: Вакансия с ID {vacancy.get('id', 'неизвестно')} содержит неполные данные.")
-    # Логика отображения правой части экрана
+
+    # Основной контент
     if st.session_state["show_create_form"]:
         create_vacancy()
     elif st.session_state["selected_vacancy"]:
@@ -227,18 +236,11 @@ def main():
         show_chat()
     else:
         st.markdown("""
-           ## Что вы можете сделать сейчас? 
-
-           1. **Выберите вакансию** из списка слева, чтобы просмотреть детали и кандидатов.
-           2. **Создайте новую вакансию**, нажав на кнопку "+" в боковом меню.
-
-           Нужна помощь? Вот несколько идей:
-           - Спросите у ИИ-помощника: *"Сколько людей хотят на эту [должность]"*.
-           - Или спросите: *"Какие кандидаты подходят для [название вакансии]?"*
-           - Нужна помощь с описанием? Скажите: *"Помоги написать описание вакансии"*.
-
-           ИИ-помощник всегда готов помочь! Просто начните вводить запрос или нажмите на микрофон, чтобы задать вопрос голосом.
-           """)
+            ## Что вы можете сделать сейчас?
+            1. **Выберите вакансию** из списка слева
+            2. **Создайте новую вакансию**, нажав на "+"
+            3. **Задайте вопрос** через текстовое поле или микрофон
+            """)
 
 
 def create_vacancy():
@@ -286,43 +288,228 @@ def create_vacancy():
             except Exception as e:
                 st.error(f"Ошибка при отправке запроса: {e}")
 
+    if st.button("← Назад", key="back_to_main"):
+        st.session_state["show_create_form"] = False
+        st.rerun()
+
+#
+# def show_vacancy_details(vacancy):
+#     st.subheader(f"Вакансия: {vacancy['direction']}")
+#     st.write(f"**Навыки:** {vacancy['skills']}")
+#     st.write(f"**Задачи:** {vacancy['tasks']}")
+#
+#     # Выполняем поиск резюме по вакансии
+#     st.subheader("Подходящие кандидаты")
+#     resumes = search_resumes(vacancy)
+#
+#     if not resumes:
+#         st.markdown("<p class='empty-list'>Подходящих резюме не найдено.</p>", unsafe_allow_html=True)
+#     else:
+#         # Отображаем список резюме
+#         for resume_data in resumes:
+#             resume = resume_data["resume"]
+#             similarity = resume_data["similarity"]
+#
+#             with st.expander(f"{resume['full_name']} - Совпадение: {similarity * 100:.2f}%"):
+#                 st.write(f"**Навыки:** {resume['skills']}")
+#                 st.write(f"**Опыт работы:** {resume['experience']}")
+#
+#                 col1, col2 = st.columns([1, 2])
+#                 with col1:
+#                     with open(resume["pdf_filename"], "rb") as pdf_file:
+#                         pdf_bytes = pdf_file.read()
+#                         st.download_button(
+#                             label="📄 Скачать резюме",
+#                             data=pdf_bytes,
+#                             file_name=resume["pdf_filename"].split("/")[-1],
+#                             mime="application/pdf"
+#                         )
+#                 with col2:
+#                     if st.button("Закрыть вакансию с этим кандидатом",
+#                                  key=f"close_with_{resume['id']}"):
+#                         # Логика закрытия вакансии с выбранным кандидатом
+#                         st.session_state["vacancies"] = [
+#                             v for v in st.session_state["vacancies"]
+#                             if v["id"] != vacancy["id"]
+#                         ]
+#                         st.session_state["selected_vacancy"] = None
+#                         st.rerun()
+#
+#     # Кнопка для закрытия вакансии
+#     if st.button("← Назад", key="back_to_main"):
+#         st.session_state["selected_vacancy"] = None
+#         st.rerun()
+
+class VoiceAnnouncer:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.engine = None
+        self.russian_voice = None
+        self.english_voice = None
+        self._init_voices()
+
+    def _init_voices(self):
+        """Инициализация доступных голосов"""
+        try:
+            # Инициализация pyttsx3 голосов
+            self.engine = pyttsx3.init()
+            voices = self.engine.getProperty('voices')
+
+            for voice in voices:
+                if not self.russian_voice and ('ru' in voice.languages or 'russian' in voice.name.lower()):
+                    self.russian_voice = voice.id
+                if not self.english_voice and ('en' in voice.languages or 'english' in voice.name.lower()):
+                    self.english_voice = voice.id
+
+            # Проверка системных голосов (для macOS/Linux)
+            try:
+                result = subprocess.run(['say', '-v', '?'], capture_output=True, text=True)
+                if 'ru_' in result.stdout or 'russian' in result.stdout.lower():
+                    self.russian_voice = 'system'
+            except:
+                pass
+
+        except Exception as e:
+            print(f"Voice initialization error: {e}")
+
+    def _speak_with_pyttsx3(self, text: str) -> bool:
+        """Озвучивание через pyttsx3"""
+        if not self.engine:
+            return False
+
+        try:
+            with self.lock:
+                # Пробуем русский голос, потом английский
+                if self.russian_voice:
+                    self.engine.setProperty('voice', self.russian_voice)
+                elif self.english_voice:
+                    self.engine.setProperty('voice', self.english_voice)
+
+                self.engine.say(text)
+                self.engine.runAndWait()
+                return True
+        except RuntimeError as e:
+            print(f"Pyttsx3 runtime error: {e}")
+            self.engine = None
+            return False
+        except Exception as e:
+            print(f"Pyttsx3 error: {e}")
+            return False
+
+    def _speak_with_system(self, text: str) -> bool:
+        """Озвучивание через системные средства"""
+        try:
+            # Пробуем русский голос, потом английский
+            voices_to_try = []
+            if self.russian_voice == 'system':
+                voices_to_try.extend(['ru_RU', 'russian', 'Yuri'])
+            voices_to_try.extend(['en_US', 'english', 'Alex'])
+
+            for voice in voices_to_try:
+                try:
+                    subprocess.run(['say', '-v', voice, text], check=True)
+                    return True
+                except subprocess.CalledProcessError:
+                    continue
+
+            return False
+        except Exception as e:
+            print(f"System TTS error: {e}")
+            return False
+
+    def speak(self, text: str) -> bool:
+        """Основной метод озвучивания"""
+        # Сначала пробуем pyttsx3
+        if self._speak_with_pyttsx3(text):
+            return True
+
+        # Если не получилось, пробуем системный способ
+        if self._speak_with_system(text):
+            return True
+
+        print(f"All TTS methods failed for: {text}")
+        return False
+
+
+# Глобальный экземпляр
+announcer = VoiceAnnouncer()
+
+
+def announce_results(resumes: List[Dict]):
+    """Озвучивает результаты поиска"""
+    if not resumes:
+        announcer.speak("No suitable candidates found")
+        return
+
+    count = len(resumes)
+    announcer.speak(f"Found {count} candidates")
+
+    time.sleep(0.5)
+
+    for i, resume in enumerate(resumes, 1):
+        name = resume['resume'].get('full_name', 'Unnamed candidate')
+        similarity = round(resume['similarity'] * 100)
+        text = f"Candidate {i}: {name}. Match: {similarity} percent"
+        if not announcer.speak(text):
+            print(f"Failed to announce: {text}")
+        time.sleep(0.3)
+
 
 def show_vacancy_details(vacancy):
-    st.subheader(f"Вакансия: {vacancy['direction']}")
-    st.write(f"**Навыки:** {vacancy['skills']}")
-    st.write(f"**Задачи:** {vacancy['tasks']}")
+    st.subheader(f"Vacancy: {vacancy['direction']}")
+    st.write(f"**Skills:** {vacancy['skills']}")
+    st.write(f"**Tasks:** {vacancy['tasks']}")
 
     # Выполняем поиск резюме по вакансии
-    st.subheader("Подходящие кандидаты")
+    st.subheader("Suitable candidates")
     resumes = search_resumes(vacancy)
 
+    # Кнопка озвучивания с обработкой в отдельном потоке
+    if st.button("🔊 Announce results", key="speak_results"):
+        threading.Thread(
+            target=announce_results,
+            args=(resumes,),
+            daemon=True
+        ).start()
+
+    # Остальной код отображения...
     if not resumes:
-        st.markdown("<p class='empty-list'>Подходящих резюме не найдено.</p>", unsafe_allow_html=True)
+        st.markdown("<p class='empty-list'>No suitable resumes found.</p>", unsafe_allow_html=True)
     else:
-        # Отображаем список резюме
         for resume_data in resumes:
             resume = resume_data["resume"]
             similarity = resume_data["similarity"]
 
-            with st.expander(f"{resume['full_name']} - Совпадение: {similarity * 100:.2f}%"):
-                st.write(f"**Навыки:** {resume['skills']}")
-                st.write(f"**Опыт работы:** {resume['experience']}")
+            with st.expander(f"{resume['full_name']} - Match: {similarity * 100:.2f}%"):
+                st.write(f"**Skills:** {resume['skills']}")
+                st.write(f"**Experience:** {resume['experience']}")
 
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    with open(resume["pdf_filename"], "rb") as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                        st.download_button(
+                            label="📄 Download resume",
+                            data=pdf_bytes,
+                            file_name=resume["pdf_filename"].split("/")[-1],
+                            mime="application/pdf"
+                        )
+                with col2:
+                    if st.button("Hire this candidate",
+                                 key=f"close_with_{resume['id']}"):
+                        st.session_state["vacancies"] = [
+                            v for v in st.session_state["vacancies"]
+                            if v["id"] != vacancy["id"]
+                        ]
+                        st.session_state["selected_vacancy"] = None
+                        st.rerun()
 
-                with open(resume["pdf_filename"], "rb") as pdf_file:
-                    pdf_bytes = pdf_file.read()
-                    st.download_button(
-                        label="📄 Скачать резюме",
-                        data=pdf_bytes,
-                        file_name=resume["pdf_filename"].split("/")[-1],
-                        mime="application/pdf"
-                    )
-
-    # Кнопка для закрытия вакансии
-    if st.button("← Назад", key="back_to_main"):
+    if st.button("← Back", key="back_to_main"):
         st.session_state["selected_vacancy"] = None
         st.rerun()
 
+
+# При завершении приложения
 
 def search_resumes(vacancy):
     """Выполняет POST-запрос для поиска резюме по вакансии."""
@@ -353,51 +540,57 @@ def search_resumes(vacancy):
 
 
 def handle_enter():
-    if st.session_state["user_input"]:
-        process_input()
+    """Обработчик нажатия Enter в текстовом поле"""
+    if st.session_state.get("user_input", ""):
+        process_text_input()
 
 
-def process_input():
-    user_input = st.session_state["user_input"].strip()
-    if user_input:
-        st.session_state["chat_history"] = [f"### Вы: {user_input}", "Место для вывода информации от нейронки..."]
-        st.session_state["chat_active"] = True
-        st.session_state["selected_vacancy"] = None  # Очищаем выбранную вакансию
-        st.session_state["show_create_form"] = False  # Закрываем форму создания вакансии
-        st.session_state["user_input"] = ""  # Очистка поля ввода
 
+def process_text_input():
+    """Обработка текстового ввода с корректным формированием запроса"""
+    current_input = st.session_state.user_input
 
-def process_input():
-    """Обработка текстового ввода."""
-    user_input = st.session_state["user_input"].strip()
-    if user_input:
-        # Получаем OAuth-токен для GigaChat
-        token = get_oauth_token(GIGACHAT_API_KEY)
+    if not current_input:
+        return
 
-        # Обрабатываем текст с помощью text_editor
-        processed_text = process_text(user_input, token)
+    # Получаем токен и обрабатываем текст
+    token = get_oauth_token(GIGACHAT_API_KEY)
+    processed_text = process_text(current_input, token)
 
-        # Проверяем, что processed_text является словарем
-        if isinstance(processed_text, dict):
-            # Формируем сообщения для вывода
-            messages = [
-                f"### Ваш запрос: {user_input}",
-                f"### Исправленный текст: {processed_text.get('corrected_text', 'Нет данных')}",
-                f"### Ответ ИИ-помощника: {processed_text}"
-            ]
-        else:
-            messages = [
-                f"### Вы: {user_input}",
-                "Ошибка: Некорректный формат ответа от process_text"
-            ]
+    # Формируем базовую структуру запроса
+    search_query = {
+        "id": -1,  # Специальный ID для запросов
+        "direction": "Результат поиска",
+        "skills": current_input,
+        "tasks": "",
+        "experience": "Не указано"
+    }
 
-        # Обновляем историю сообщений
-        st.session_state["chat_history"] = messages
-        st.session_state["chat_active"] = True
-        st.session_state["selected_vacancy"] = None  # Очищаем выбранную вакансию
-        st.session_state["show_create_form"] = False  # Закрываем форму создания вакансии
-        st.session_state["user_input"] = ""  # Очистка поля ввода
+    # Если ответ содержит структурированные данные
+    if isinstance(processed_text, dict):
+        # Используем исправленный текст как описание
+        search_query["tasks"] = processed_text.get('corrected_text', current_input)
 
+        # Если есть исправленные ключи, используем их для поиска
+        if 'corrected_keys' in processed_text:
+            corrected = processed_text['corrected_keys']
+            if corrected.get('direction'):
+                search_query["direction"] = ', '.join([d for d in corrected['direction'] if d != 'Не указано'])
+            if corrected.get('skills'):
+                search_query["skills"] = ', '.join([s for s in corrected['skills'] if s != 'Не указано'])
+            if corrected.get('experience'):
+                search_query["experience"] = ', '.join([e for e in corrected['experience'] if e != 'Не указано'])
+    else:
+        search_query["tasks"] = str(processed_text)
+
+    # Убираем пустые значения
+    search_query = {k: v if v else "Не указано" for k, v in search_query.items()}
+
+    # Активируем поиск
+    st.session_state.selected_vacancy = search_query
+    st.session_state.chat_active = False
+    # st.session_state.user_input = ""  # Очищаем поле ввода
+    st.rerun()  # Обновляем интерфейс
 
 def show_chat():
     for message in st.session_state["chat_history"]:

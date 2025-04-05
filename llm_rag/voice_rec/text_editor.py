@@ -1,44 +1,264 @@
 import re
 import requests
 import uuid
-
+from time import sleep
 # Отключаем предупреждения SSL
 requests.packages.urllib3.disable_warnings()
 
 # Константы для API GigaChat
-GIGACHAT_API_KEY = 'MDVhZjBkMWEtYjJjZS00ZmJjLTkzZjUtMjVlOGUwODdmNmY4OmYwYTI0NDNlLWU0NWItNGU1MS04NTg5LWYzNGY2ZDY1ZTBhMQ=='
+GIGACHAT_API_KEY = "M2ZhMjE1ZmUtYTM5Yi00OTNkLTllMGUtYmEzZmJmNmFmZDU1OmE4OGJhNGY1LWI5OTgtNDFmOC04OWRjLWNjNzkyMmE4MzYyNA=="
 AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 GIGACHAT_API_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
-# Словарь замен для специфичных опечаток
 REPLACEMENTS = {
-    r'(?i)(поэтом|паитон|питон|Pyton)': 'Python',
-    r'(?i)(скл|СКЛ)': 'SQL',
-    r'(?i)(джава|Java\s*script)': 'JavaScript',
-    r'(?i)(фронтент|фронтенд|фронд)': 'Frontend',
-    r'(?i)(быкент|бэкенд|бекенд)': 'Backend',
-    r'(?i)(девопс|девопс-инженер)': 'DevOps',
-    r'(?i)(мидл|мидл-плюс)': 'Middle+',
-    r'(?i)(джун|джуниор)': 'Junior',
-    r'(?i)(сеньор|синьор)': 'Senior',
-    r'(?i)(фуллстак|фулстэк)': 'Fullstack',
-    r'(?i)(машинное\s+обучение|мл)': 'Machine Learning',
-    r'(?i)(искуственный\s+интеллект|ИИ)': 'Artificial Intelligence'
+    # Направления
+    r'\b(бэкенд|бекенд|бекендер|бек|бэк|backend)\w*\b': 'Backend Developer',
+    r'\b(фронтент|фронтенд|фронтендер|фронд|фронт|frontend|фронтенд-разработчик)\w*\b': 'Frontend Developer',
+    r'\b(qa|кьюей|тестировщик|qa-инженер|тестер)\w*\b': 'QA Engineer',
+    r'\b(дата\s*аналитик|data\s*analyst)\w*\b': 'Data Analyst',
+    r'\b(питон|пайтон|python|python-разработчик)\w*\b': 'Python Developer',
+    r'\b(девопс|devops|devops-специалист)\w*\b': 'DevOps Specialist',
+    r'\b(машинное\s+обучение|машинка|ml|machine\s+learning)\w*\b': 'ML-engineer',
+    r'\b(микросервис|микро\s*сервис|микросервисная\s*архитектура)\w*\b': 'Microservices Architecture Engineer',
+    r'\b(мобильный\s*разработчик|ios\s*разработчик)\w*\b': 'Mobile Developer (iOS)',
+    r'\b(искуственный\s+интеллект|ии|ai)\w*\b': 'Artificial Intelligence Specialist',
+
+    # Навыки
+    r'\b(скл|эскюэл|sql)\w*\b': 'SQL',
+    r'\b(джава|джавист|java|javascript)\w*\b': 'JavaScript',
+    r'\b(реакт|react)\w*\b': 'React',
+    r'\b(нод|node\.js|nodejs)\w*\b': 'Node.js',
+    r'\b(докер|докер компоуз|докер композ|docker|docker-compose|docker compose)\w*\b': 'Docker',
+    r'\b(кубернетис|kubernetes|k8s)\w*\b': 'Kubernetes',
+    r'\b(гит|git)\w*\b': 'Git',
+    r'\b(рест|rest\s*api)\w*\b': 'REST API',
+    r'\b(графкл|graphql)\w*\b': 'GraphQL',
+
+    # Уровень опыта
+    r'\b(джун|джуниор|junior)\w*\b': 'Junior',
+    r'\b(мидл|мидл-плюс|middle)\w*\b': 'Middle',
+    r'\b(сеньор|синьор|senior)\w*\b': 'Senior',
+    r'\b(тимлид|team\s*lead)\w*\b': 'Team Lead',
 }
 
-# Обновленные тематики с русскими названиями полей
+DIRECTIONS = {
+    # Направления
+    r'\b(бэкенд|бекенд|бекендер|бек|бэк|backend)\w*\b': 'Backend Developer',
+    r'\b(фронтент|фронтенд|фронтендер|фронд|фронт|frontend)\w*\b': 'Frontend Developer',
+    r'\b(qa|кьюей|тестировщик|qa-инженер|тестер)\w*\b': 'QA Engineer',
+    r'\b(дата\s*аналитик|data\s*analyst)\w*\b': 'Data Analyst',
+    r'\b(питон|пайтон|python|Python|python-разработчик)\w*\b': 'Python Developer',
+    r'\b(девопс|devops|devops-специалист)\w*\b': 'DevOps Specialist',
+    r'\b(машинное\s+обучение|машинка|ml|machine\s+learning)\w*\b': 'ML-engineer',
+    r'\b(микросервис|микро\s*сервис|микросервисная\s*архитектура)\w*\b': 'Microservices Architecture Engineer',
+    r'\b(мобильный\s*разработчик|ios\s*разработчик)\w*\b': 'Mobile Developer (iOS)',
+    r'\b(искуственный\s+интеллект|ии|ai)\w*\b': 'Artificial Intelligence Specialist',
+}
+SKILLS = {
+    # Основные языки программирования
+    r'\b(джава|джавист|java|javascript|js)\w*\b': 'JavaScript',
+    r'\b(python|питон|пайтон)\w*\b': 'Python',
+    r'\b(go|golang)\w*\b': 'Golang',
+    r'\b(ruby|руби)\w*\b': 'Ruby',
+    r'\b(c sharp|c#)\w*\b': 'C#',
+    r'\b(c plus plus|c\+\+)\w*\b': 'C++',
+    r'\b(kotlin|котелин)\w*\b': 'Kotlin',
+    r'\b(swift|свифт)\w*\b': 'Swift',
+    r'\b(scala|скала)\w*\b': 'Scala',
+    r'\b(php|пых|пхп)\w*\b': 'PHP',
+
+    # Фронтенд
+    r'\b(реакт|react)\w*\b': 'React',
+    r'\b(vue|вью)\w*\b': 'Vue.js',
+    r'\b(vuex|вьюкс)\w*\b': 'Vuex',
+    r'\b(angular|ангуляр)\w*\b': 'Angular',
+    r'\b(next\.js|nextjs|некст)\w*\b': 'Next.js',
+    r'\b(typescript|тс)\w*\b': 'TypeScript',
+    r'\b(redux|редукс)\w*\b': 'Redux',
+    r'\b(redux toolkit)\w*\b': 'Redux Toolkit',
+    r'\b(rxjs)\w*\b': 'RxJS',
+    r'\b(tailwind|тейлвинд)\w*\b': 'Tailwind CSS',
+    r'\b(pwa)\w*\b': 'PWA',
+    r'\b(ssr)\w*\b': 'SSR',
+    r'\b(vite|вайт)\w*\b': 'Vite',
+
+    # Бэкенд
+    r'\b(нод|node\.js|nodejs)\w*\b': 'Node.js',
+    r'\b(express|экспресс)\w*\b': 'Express',
+    r'\b(django|джанго)\w*\b': 'Django',
+    r'\b(flask|фляск)\w*\b': 'Flask',
+    r'\b(fastapi)\w*\b': 'FastAPI',
+    r'\b(spring boot)\w*\b': 'Spring Boot',
+    r'\b(laravel|ларавел)\w*\b': 'Laravel',
+    r'\b(ruby on rails|rails)\w*\b': 'Ruby on Rails',
+    r'\b(gin|джин)\w*\b': 'Gin',
+    r'\b(echo|эхо)\w*\b': 'Echo',
+    r'\b(\.net|dotnet)\w*\b': '.NET',
+
+    # Базы данных
+    r'\b(скл|эскюэл|sql)\w*\b': 'SQL',
+    r'\b(postgres|postgresql|постгрес)\w*\b': 'PostgreSQL',
+    r'\b(mysql|майскл)\w*\b': 'MySQL',
+    r'\b(mongodb|монго)\w*\b': 'MongoDB',
+    r'\b(redis|редис)\w*\b': 'Redis',
+    r'\b(sql server)\w*\b': 'SQL Server',
+    r'\b(oracle|оракл)\w*\b': 'Oracle',
+    r'\b(sqlalchemy)\w*\b': 'SQLAlchemy',
+
+    # DevOps и инфраструктура
+    r'\b(докер|докер компоуз|докер композ|docker|docker-compose)\w*\b': 'Docker',
+    r'\b(кубернетис|kubernetes|k8s)\w*\b': 'Kubernetes',
+    r'\b(ci cd|ci/cd)\w*\b': 'CI/CD',
+    r'\b(terraform|терраформ)\w*\b': 'Terraform',
+    r'\b(ansible|ансибл)\w*\b': 'Ansible',
+    r'\b(nginx|энжинкс)\w*\b': 'Nginx',
+    r'\b(jenkins|джеккинс)\w*\b': 'Jenkins',
+    r'\b(prometheus|прометеус)\w*\b': 'Prometheus',
+    r'\b(aws)\w*\b': 'AWS',
+    r'\b(vpn)\w*\b': 'VPN',
+
+    # Тестирование
+    r'\b(selenium|селениум)\w*\b': 'Selenium',
+    r'\b(jest|джест)\w*\b': 'Jest',
+    r'\b(cypress|сайпресс)\w*\b': 'Cypress',
+    r'\b(jmeter|джметер)\w*\b': 'JMeter',
+    r'\b(k6)\w*\b': 'k6',
+    r'\b(postman|постман)\w*\b': 'Postman',
+
+    # Аналитика и BI
+    r'\b(pandas|пандас)\w*\b': 'pandas',
+    r'\b(power bi|powerbi)\w*\b': 'Power BI',
+    r'\b(tableau|табло)\w*\b': 'Tableau',
+    r'\b(etl)\w*\b': 'ETL',
+    r'\b(hadoop|хадуп)\w*\b': 'Hadoop',
+    r'\b(spark|спарк)\w*\b': 'Spark',
+    r'\b(hive|хайв)\w*\b': 'Hive',
+
+    # Мобильная разработка
+    r'\b(android studio)\w*\b': 'Android Studio',
+    r'\b(jetpack)\w*\b': 'Jetpack',
+    r'\b(coredata)\w*\b': 'CoreData',
+    r'\b(uikit)\w*\b': 'UIKit',
+
+    # Другие технологии
+    r'\b(graphql|графкл)\w*\b': 'GraphQL',
+    r'\b(websockets|вебсокеты)\w*\b': 'WebSockets',
+    r'\b(grpc)\w*\b': 'gRPC',
+    r'\b(kafka|кафка)\w*\b': 'Kafka',
+    r'\b(rabbitmq|рэббит)\w*\b': 'RabbitMQ',
+    r'\b(celery|селери)\w*\b': 'Celery',
+    r'\b(sidekiq|сайдкик)\w*\b': 'Sidekiq',
+
+    # Инструменты разработки
+    r'\b(гит|git)\w*\b': 'Git',
+    r'\b(рест|rest\s*api)\w*\b': 'REST API',
+    r'\b(jira|джира)\w*\b': 'Jira',
+    r'\b(confluence|конфлюенс)\w*\b': 'Confluence',
+    r'\b(figma|фигма)\w*\b': 'Figma',
+    r'\b(sketch|скетч)\w*\b': 'Sketch',
+    r'\b(storybook|сторибук)\w*\b': 'Storybook',
+    r'\b(webpack|вебпак)\w*\b': 'Webpack',
+    r'\b(markdown|маркдаун)\w*\b': 'Markdown',
+
+    # Безопасность
+    r'\b(pentest|пентест)\w*\b': 'Pentest',
+    r'\b(owasp)\w*\b': 'OWASP',
+
+    # Софт-скиллы
+    r'\b(коммуникации)\w*\b': 'Коммуникации',
+    r'\b(управление командой)\w*\b': 'Управление командой',
+    r'\b(архитектура)\w*\b': 'Архитектура ПО',
+    r'\b(бизнес процессы)\w*\b': 'Бизнес-процессы',
+
+    # Специализированные технологии
+    r'\b(tensorflow|тензорфлоу)\w*\b': 'TensorFlow',
+    r'\b(pytorch|пайторч)\w*\b': 'PyTorch',
+    r'\b(mlflow)\w*\b': 'MLFlow',
+    r'\b(gpt)\w*\b': 'GPT',
+    r'\b(llm)\w*\b': 'LLM',
+    r'\b(langchain)\w*\b': 'LangChain',
+    r'\b(ros)\w*\b': 'ROS',
+    r'\b(rtos)\w*\b': 'RTOS',
+    r'\b(3d графика|3d graphics)\w*\b': '3D-графика',
+    r'\b(unity|юнити)\w*\b': 'Unity',
+}
+EXPERIENCE_LEVELS = {
+    # Уровень опыта
+    r'\b(джун|джуниор|junior)\w*\b': 'Junior',
+    r'\b(мидл|мидл-плюс|middle)\w*\b': 'Middle',
+    r'\b(сеньор|синьор|senior)\w*\b': 'Senior',
+    r'\b(тимлид|team\s*lead)\w*\b': 'Team Lead',
+}
+
+TASKS = {
+    r'\b(разработка\s+backend-сервисов)\w*\b': 'Backend Development',
+    r'\b(тестирование\s+приложений)\w*\b': 'Application Testing',
+    # ... остальные задачи ...
+}
+
 THEMES = {
-    "вакансии": ["направление", "навыки", "задачи"],
-    "резюме": ["направление", "навыки", "опыт работы"]
+    "резюме": ["направление", "навыки", "опыт работы"],  # Всегда показываем эти поля для вакансий
+    "другое": []  # Для некорректных запросов
 }
 
-# Словарь перевода ключей на английский
+
 KEY_TRANSLATION = {
     "направление": "direction",
     "навыки": "skills",
     "опыт работы": "experience",
     "задачи": "tasks"
 }
+
+def levenshtein_distance(s1, s2):
+    """Вычисляет расстояние Левенштейна между двумя строками."""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+
+    return previous_row[-1]
+
+
+def similarity_percent(s1, s2):
+    """Вычисляет процент совпадения между двумя строками."""
+    distance = levenshtein_distance(s1, s2)
+    max_len = max(len(s1), len(s2))
+    if max_len == 0:
+        return 100  # Если обе строки пустые, считаем их одинаковыми
+    return (1 - distance / max_len) * 100
+
+
+def extract_keys_from_regex(pattern):
+    """Извлекает ключи из регулярного выражения."""
+    match = re.match(r'\\b\((.*?)\)\\w*\*\?*\\b', pattern)
+    if match:
+        return [k.strip() for k in match.group(1).split('|')]
+    return []
+
+
+def replace_using_dict(input_phrase, replacements, threshold=80):
+    """Заменяет слова в фразе на основе словаря и процента совпадения."""
+    words = re.findall(r'\w+[\w-]*\w+|\w+', input_phrase.lower())
+    for i in range(len(words)):
+        word = words[i]
+        for pattern, replacement in replacements.items():
+            keys = extract_keys_from_regex(pattern)
+            for key in keys:
+                if similarity_percent(word, key.lower()) >= threshold:
+                    words[i] = replacement
+                    break
+    return ' '.join(words)
 
 
 def translate_keys(data, translation_dict):
@@ -67,8 +287,14 @@ def get_oauth_token(api_key):
         raise Exception(f"Ошибка при получении токена: {str(e)}") from e
 
 
+import time
+
+
 def call_gigachat_api(prompt, token):
     """Отправляет запрос к API GigaChat и возвращает очищенный ответ."""
+    # Добавляем задержку перед запросом
+    time.sleep(1)  # 1 секунда задержки
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -88,165 +314,229 @@ def call_gigachat_api(prompt, token):
     except requests.exceptions.SSLError as e:
         raise Exception("Ошибка SSL: проверьте сертификаты.") from e
     except requests.exceptions.HTTPError as e:
+        if response.status_code == 429:
+            # Если превышен лимит, ждем дольше и пробуем снова
+            time.sleep(5)  # Увеличиваем задержку до 5 секунд
+            return call_gigachat_api(prompt, token)  # Рекурсивный вызов
         raise Exception(f"Ошибка HTTP: {response.status_code}, {response.text}") from e
     except Exception as e:
         raise Exception(f"Неизвестная ошибка: {str(e)}") from e
 
 
-def clean_response(text):
-    """Удаляет маркировку списков и лишние пояснения из ответа."""
-    text = re.sub(r'^\d+\.\s*', '', text, flags=re.MULTILINE)
-    text = re.sub(r'[\n\t]+', ' ', text)
-    text = re.sub(r'Этот список может варьироваться.*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'Ключевые навыки:\s*', '', text, flags=re.IGNORECASE)
-    return text.strip()
+def determine_theme(text, token):
+    """Строгое определение темы с использованием ключевых слов"""
+    # Ключевые слова для поиска вакансий (поиск сотрудников)
+    vacancy_keywords = {'требуется', 'нужен', 'нужна', 'ищем', 'вакансия', 'срочно', 'ищется', 'подбор', 'найти'}
 
+    # Ключевые слова для поиска работы
+    job_search_keywords = {'ищу работу', 'ищу позицию', 'рассматриваю предложения', 'соискатель', 'ищу вакансию',
+                           'хочу работать'}
 
-def replace_context_words(text):
-    """Замена специфичных опечаток и сокращений"""
-    for pattern, replacement in REPLACEMENTS.items():
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-    return text
+    text_lower = text.lower()
+
+    # Проверяем сначала по ключевым словам
+    has_vacancy = any(word in text_lower for word in vacancy_keywords)
+    has_job_search = any(word in text_lower for word in job_search_keywords)
+
+    if has_vacancy and not has_job_search:
+        return 'резюме'
+    elif has_job_search and not has_vacancy:
+        return 'другое'
+
+    # Если не определили по ключевым словам, уточняем у модели
+    prompt = f"""Определи тип запроса. Варианты:
+    1. "резюме" - если это запрос на поиск сотрудников, чтобы был показан список подходящих кандидатов(резюме)
+    2. "другое" - если это иной запрос
+
+    Примеры "резюме":
+    - Нужен программист Python и Django
+    - Ищем фронтенд-разработчика
+    - Требуется DevOps инженер с опытом 3 года
+
+    Примеры "другое":
+    - Какая сегодня погода
+    - Сколько стоит машина
+
+    Текст: "{text}"
+    Ответ (только ОДНО слово резюме или другое):"""
+
+    response = call_gigachat_api(prompt, token).strip().lower()
+    return response if response in ['резюме', 'другое'] else 'другое'
 
 
 def check_it_theme(text, token):
-    """Проверяет принадлежность текста к IT-программированию"""
+    """Проверяет принадлежность текста к IT-программированию."""
+    # Быстрая проверка по ключевым словам без обращения к API
+    it_keywords = {'it', 'айти', 'программист', 'разработчик', 'developer',
+                   'код', 'программа', 'алгоритм', 'база данных', 'backend',
+                   'frontend', 'devops', 'qa', 'тестировщик', 'api', 'фреймворк',
+                   'язык программирования', 'python', 'java', 'javascript', 'sql'}
+
+    text_lower = text.lower()
+    if any(keyword in text_lower for keyword in it_keywords):
+        return True
+
+    # Если по ключевым словам не определили, уточняем у API
     prompt = f"""
     Относится ли этот текст к сфере IT-программирования или смежным технологиям?
     Ответь только 'да' или 'нет' без пояснений.
-
-    Примеры IT-тем:
-    - Разработка ПО
-    - Вакансии программистов
-    - Резюме IT-специалистов
-    - Технические навыки (Python, SQL и т.д.)
-    - Задачи по разработке
-
-    НЕ IT-темы:
-    - Грузоперевозки
-    - Финансовые услуги
-    - Медицинские услуги
-    - Продажи
-
     Текст: {text}
     Ответ:
     """
     response = call_gigachat_api(prompt, token)
+    sleep(2)
     return response.strip().lower() == 'да'
 
 
-def correct_text(text, token):
-    """Исправляет грамматику и опечатки в тексте с учетом контекста."""
-    prompt = f"""
-    Исправь грамматические ошибки и опечатки в тексте, сохранив исходный смысл.
-    Текст: {text}
-    Исправленный текст:
-    """
-    response = call_gigachat_api(prompt, token)
-    return response.strip()
-
-
-def determine_theme(text, token):
-    """Улучшенная классификация с четкими инструкциями."""
-    prompt = f"""
-    Классифицируй текст как вакансию или резюме. Ответь только одним словом: вакансии, резюме или другое.
-    Примеры:
-    - "Требуется Python-разработчик" → вакансии
-    - "Ищу работу: 3 года опыта" → резюме
-    - "Резюме: Менеджер проектов" → резюме
-    - "Срочно нужен специалист по DevOps!" → вакансии
-
-    Текст: {text}
-    """
-    response = call_gigachat_api(prompt, token)
-    return response.lower()
-
-
 def extract_keywords_with_gigachat(text, fields, token):
-    """Точное извлечение ключевых слов из исходного текста."""
+    """Улучшенное извлечение ключевых слов с гибридным подходом"""
     keywords = {}
+    valid_directions = list(DIRECTIONS.values())
+    valid_skills = list(SKILLS.values())
+
     for field in fields:
         if field == "направление":
-            prompt = f"Из текста: '{text}' извлеки основное направление деятельности (1-2 слова). Пример: 'Python-разработчик', 'Java-специалист'. Если нет - оставь пустым."
-        elif field == "навыки":
-            prompt = f"Из текста: '{text}' перечисли только явно указанные навыки через запятую. Пример: 'Python, Django, Flask'. Если нет - оставь пустым."
-        elif field == "опыт работы":
-            prompt = f"Из текста: '{text}' извлеки только явно указанный опыт работы (например: '3 года', '5 лет'). Если нет - оставь пустым."
-        elif field == "задачи":
-            prompt = f"Из текста: '{text}' извлеки только явно указанные задачи через запятую. Пример: 'разработка backend-сервисов'. Если нет - оставь пустым."
-        else:
-            continue
+            found_direction = None
+            # Сначала ищем точное совпадение в тексте
+            for direction in valid_directions:
+                if re.search(r'\b' + re.escape(direction.lower()) + r'\b', text.lower()):
+                    found_direction = direction
+                    break
 
-        response = call_gigachat_api(prompt, token)
-        keywords[field] = [kw.strip() for kw in response.split(",") if kw.strip()]
+            # Если не нашли, проверяем по regex-шаблонам
+            if not found_direction:
+                for pattern, direction in DIRECTIONS.items():
+                    if re.search(pattern, text, re.IGNORECASE):
+                        found_direction = direction
+                        break
+
+            keywords[field] = [found_direction] if found_direction else ["Не указано"]
+
+        elif field == "навыки":
+            found_skills = []
+            text_lower = text.lower()
+
+            # Проверяем все навыки из словаря
+            for pattern, skill in SKILLS.items():
+                if re.search(pattern, text_lower):
+                    found_skills.append(skill)
+
+            # Проверяем английские названия навыков
+            for skill in valid_skills:
+                if re.search(r'\b' + re.escape(skill.lower()) + r'\b', text_lower):
+                    if skill not in found_skills:
+                        found_skills.append(skill)
+
+            keywords[field] = list(set(found_skills)) if found_skills else ["Не указано"]
+
+        elif field == "опыт работы":
+            exp_match = re.search(r'(\d+)\s*(лет|года|год|year|years)', text, re.IGNORECASE)
+            keywords[field] = [f"{exp_match.group(1)} {exp_match.group(2)}"] if exp_match else ["Не указано"]
+
     return keywords
 
 
+def clean_response(text):
+    """Агрессивная очистка ответов"""
+    text = re.sub(r'^\W+', '', text)  # Удаляем начальные не-буквы
+    text = re.sub(r'\W+$', '', text)  # Удаляем конечные не-буквы
+    text = re.sub(r'исправленный текст:\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'ответ:\s*', '', text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def correct_text(text, token):
+    """Коррекция текста без лишних слов"""
+    prompt = f"""Исправь грамматику и технические термины в тексте, сохраняя исходный смысл.
+    Используй только текст без пояснений и пометок.
+    Текст: "{text}"
+    Исправленный текст:"""
+
+    response = call_gigachat_api(prompt, token)
+    # Удаляем все, что может добавить модель
+    response = re.sub(r'^исправленный текст:\s*', '', response, flags=re.IGNORECASE)
+    return response.strip()
+
+
+def preprocess_query(text):
+    """Предварительная обработка запроса, удаление команд типа 'покажи мне'"""
+    # Удаляем команды типа "покажи мне", "найди", "ищи" и т.д.
+    text = re.sub(r'^(покажи\s+мне|найди|ищи|покажи|ищем|нужны?|требуются?)\s+', '', text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def extract_direction_from_query(text):
+    """Пытается извлечь направление из запроса без обращения к API"""
+    text_lower = text.lower()
+    for pattern, direction in DIRECTIONS.items():
+        if re.search(pattern, text_lower):
+            return direction
+    return None
+
+
 def process_text(text, token):
-    """Основная функция обработки текста."""
+    """Обновленная функция обработки текста"""
     original_text = text.strip()
     if not original_text or len(original_text) < 10:
-        return {"corrected_text": "Текст некорректен. Проверьте ввод.", "flag": "другое", "corrected_keys": {}}
+        return {"error": "Текст некорректен. Проверьте ввод."}
 
-    # 1. Замена специфичных опечаток
-    context_corrected_text = replace_context_words(original_text)
+    # 1. Предварительная обработка запроса
+    preprocessed_text = preprocess_query(original_text)
 
-    # 2. Проверка IT-тематики
+    # 2. Замена опечаток
+    context_corrected_text = replace_using_dict(preprocessed_text, REPLACEMENTS, threshold=80)
+
+    # 3. Проверка IT-тематики
     if not check_it_theme(context_corrected_text, token):
-        return {"corrected_text": "Извините, ваш запрос не входит в мои компетенции", "flag": "другое", "corrected_keys": {}}
+        return {
+            "original_text": original_text,
+            "corrected_text": original_text,
+            "flag": "не IT тематика",
+            "corrected_keys": {},
+            "message": "Данный вопрос не входит в мою компетенцию. Я могу помочь только с IT-тематикой."
+        }
 
-    # 3. Глубокая коррекция через GigaChat
+    # 4. Коррекция текста
     corrected_text = correct_text(context_corrected_text, token)
 
-    # 4. Классификация
+    # 5. Классификация
     theme = determine_theme(corrected_text, token)
 
     if theme == "другое":
-        return {"corrected_text": "Вопрос не входит в компетенцию.", "flag": "другое", "corrected_keys": {}}
+        return {
+            "original_text": original_text,
+            "corrected_text": corrected_text,
+            "flag": "некорректный запрос",
+            "corrected_keys": {},
+            "message": "Я могу помочь только с поиском IT-специалистов."
+        }
 
-    # 5. Извлечение ключевых слов
-    fields = THEMES[theme]
+    # 6. Извлечение ключевых слов
+    fields = THEMES["резюме"]
     keywords = extract_keywords_with_gigachat(corrected_text, fields, token)
 
-    # 6. Формирование corrected_keys с проверкой на отсутствие данных
-    corrected_keywords = {}
-    for field in fields:
-        if field in keywords and keywords[field]:
-            # Проверка на "отсебятину" через кросс-валидацию с исправленным текстом
-            valid_values = []
-            for value in keywords[field]:
-                if re.search(r'\b' + re.escape(value) + r'\b', corrected_text, re.IGNORECASE):
-                    valid_values.append(value)
-            corrected_keywords[field] = valid_values if valid_values else ["Не указано"]
-        else:
-            corrected_keywords[field] = ["Не указано"]
+    # 7. Если направление не найдено, попробуем извлечь его вручную
+    if "направление" not in keywords or keywords["направление"][0] == "Не указано":
+        direction = extract_direction_from_query(corrected_text)
+        if direction:
+            keywords["направление"] = [direction]
 
-    # 7. Перевод ключей на английский
-    translated_keywords = translate_keys(corrected_keywords, KEY_TRANSLATION)
+    # 8. Перевод ключей
+    translated_keywords = translate_keys(keywords, KEY_TRANSLATION)
 
     return {
         "original_text": original_text,
         "corrected_text": corrected_text,
-        "flag": theme,
+        "flag": "резюме",
         "corrected_keys": translated_keywords
     }
+
 
 # Примеры использования
 if __name__ == "__main__":
     examples = [
-        "Ищу работу Python-разработчиком. Опыт работы 3 года. Владею Django и Flask.",
-        "Требуется Java-разработчик в компанию 'Альфа-Банк'. Задачи: разработка backend-сервисов.",
-        "Резюме: Менеджер проектов с 5-летним опытом в IT. Навыки: Agile, Scrum.",
-        "Срочно нужен специалист по кибербезопасности! Зарплата от 150 тыс.",
-        "Ищу работу: 3 года опыта в тестировании ПО. Инструменты: Selenium, Postman.",
-        "мне нуженно срочно поэтом разрабочик с опытом работу не менее трех лет",
-        "мне нужна вакансия бекент разрабочика на джава",
-        "мне нужно 10 килограмм яблок",
-        "мне нужен быкент разрабочик сопотом десять лет",
-        "мне нужен фронтент разрабочик с опытом один год",
-        "Ищу грузчиков для работы на складе",
-        "Требуется бухгалтер со знанием 1С",
-        "Резюме: Python-разработчик. Навыки: Python, Django."  # Нет опыта работы
+        "покажи мне всех бекендеров которые занимаются разработкой веб-сайтов с помощью рест апи и го",
+        "Ищу работу Python разработчиком"
     ]
 
     try:

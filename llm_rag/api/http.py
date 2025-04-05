@@ -2,12 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from llm_rag.db.database.database import SessionLocal, engine, Base
-from llm_rag.search.search import simple_resume_search
+from llm_rag.search.search import enhanced_resume_search
 from llm_rag.db.schemas.schemas import Resume as ResumeSchema, ResumeCreate, ResumeUpdate, Vacancy as VacancySchema, VacancyCreate, VacancyBase
 from llm_rag.db.repository.repository import create_resume, get_resume, get_resumes, update_resume, delete_resume, create_vacancy, get_vacancy, get_vacancies
 from pydantic import BaseModel
 from typing import List
+import requests
 import os
+import pyttsx3
+import threading
+import time
 
 router = APIRouter()
 
@@ -33,21 +37,40 @@ def download_file(file_path: str = Query(...)):
 
 
 @router.post("/search_resumes/", response_model=List[ResumeWithScore])
-def search_resumes(vacancy: VacancyBase, top_n: int = Query(20, ge=1, le=50)):
+def search_resumes(vacancy: VacancyBase, top_n: int = Query(5, ge=1, le=50)):
     """
     Ищет наиболее подходящие резюме под вакансию.
     :param vacancy: JSON с direction и skills
     :param top_n: Сколько лучших резюме вернуть (по умолчанию 5, максимум 50)
     """
     try:
-        results = simple_resume_search(vacancy.dict())
-        sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
-        top_results = sorted_results[:top_n]
+        # Загружаем резюме с другого эндпоинта
+        response = requests.get("http://localhost:8000/resumes/")
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Не удалось получить резюме")
 
-        response = [
-            ResumeWithScore(resume=r, similarity=round(score, 4)) for r, score in top_results
+        resumes = response.json()
+
+        # Ищем подходящих кандидатов
+        results = enhanced_resume_search(vacancy.dict(), resumes)
+
+        # Фильтруем результаты с похожестью >= 5% и сортируем по убыванию
+        filtered_results = [
+            result for result in results
+            if result.get("similarity", 0) >= 0.5
         ]
-        return response
+        filtered_results.sort(key=lambda x: x["similarity"], reverse=True)
+
+        # Ограничиваем top_n
+        top_results = filtered_results[:top_n]
+
+        # Формируем ответ
+        response_data = [
+            ResumeWithScore(resume=result["resume"], similarity=result["similarity"])
+            for result in top_results
+        ]
+        return response_data
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 

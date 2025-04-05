@@ -6,7 +6,7 @@ from typing import Dict
 import json
 from process_rag_cv import process_resume_with_matching
 
-FOLDER_PATH = "/Users/lenaivanilov/Documents/project_llm/cv_files"
+FOLDER_PATH = "/Users/lenaivanilov/Documents/project_llm/cvs"
 # GROQ_API_KEY = "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"
 GROQ_API_KEY = "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"
 FASTAPI_URL = "http://localhost:8000/resumes/"

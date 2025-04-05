@@ -8,9 +8,12 @@ import torch
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, pipeline
 import threading
 import torchaudio
+torchaudio.set_audio_backend("soundfile")  # Добавьте в начало скрипта
+
 
 # Параметры записи
 FORMAT = pyaudio.paInt16
+
 CHANNELS = 1
 RATE = 16000
 CHUNK = 1024
@@ -101,6 +104,9 @@ def transcribe_audio(file_path):
 
 
 if __name__ == "__main__":
+    print("Доступные бэкенды:", torchaudio.list_audio_backends())
+    print("Текущий бэкенд:", torchaudio.get_audio_backend())
+
     print("Подготовка к записи...")
     time.sleep(1)
 
